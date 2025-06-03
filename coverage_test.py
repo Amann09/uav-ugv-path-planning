@@ -6,7 +6,6 @@ import matplotlib.pyplot as plt2
 import matplotlib as mpl
 from matplotlib.patches import Patch
 from matplotlib.lines import Line2D
-import planner
 
 cp_debug_level = 0
 test_show_each_result = False
@@ -37,12 +36,12 @@ def plot_map(target_map, trajectory, map_name="map", params_str=""):
                         PlannerStatus.FOUND: 'mediumseagreen',
                         PlannerStatus.NOT_FOUND: 'red'}
     cmap = mpl.colors.ListedColormap(
-        ['w', 'k', start_position_color, status_color_ref[PlannerStatus.FOUND], status_color_ref[PlannerStatus.NOT_FOUND]])
-    norm = mpl.colors.BoundaryNorm([0, 1, 2, 3, 4, 5], cmap.N)
+        ['w', 'k', start_position_color, 'darkgray', status_color_ref[PlannerStatus.FOUND], status_color_ref[PlannerStatus.NOT_FOUND]])
+    norm = mpl.colors.BoundaryNorm([0, 1, 2, 3, 4, 5, 6], cmap.N)
 
     # Define conversions from status to cmap references idx.
-    status_to_cmap_pos = {PlannerStatus.FOUND: 3,
-                          PlannerStatus.NOT_FOUND: 4}
+    status_to_cmap_pos = {PlannerStatus.FOUND: 4,
+                          PlannerStatus.NOT_FOUND: 5}
 
     # Copy the original map to avoid changes on it
     target_map_ref = np.copy(target_map)
@@ -111,22 +110,47 @@ def print_4th_to_1st_coordinates(l1, l2):
         print(f"{l1[i]} -> {l2[i]}")
 
 
-final_map = np.zeros((30, 30), dtype=int)
+final_map = np.zeros((10, 10), dtype=int)
 
 planned_path_in_4th_quad = list()
 
 
 # Create a list for dynamic compute the best coverage heuristic for each map
 # maps = ["map1", "map2", "map3", "map4"]
-maps = ["maps_30x30_1", "maps_30x30_2", "maps_30x30_3", "maps_30x30_4", "maps_30x30_5", "maps_30x30_6", "maps_30x30_7"]
+maps = ["maps_10x10_1", "maps_10x10_2", "maps_10x10_3", "maps_10x10_4", "maps_10x10_5", "maps_10x10_6", "maps_10x10_7", "maps_10x10_8"]
+# maps = ["maps_12x12_1", "maps_12x12_2", "maps_12x12_3", "maps_12x12_4", "maps_12x12_5", "maps_12x12_6"]
 cp_heuristics = [HeuristicType.VERTICAL,
                 HeuristicType.HORIZONTAL, HeuristicType.CHEBYSHEV, HeuristicType.MANHATTAN]
 orientations = [0, 1, 2, 3]
 
-for map_name in maps:
+last_end_pos = None
+
+for idx, map_name in enumerate(maps):
     compare_tb = []
 
     target_map = load_map(map_name)
+
+    # If not first map, override start pos
+    if idx > 0 and last_end_pos is not None:
+        # Clear old '2' (start) if any
+        target_map[target_map == 2] = 0
+
+        min_dist = float('inf')
+        new_start = None
+
+        for x in range(target_map.shape[0]):
+            for y in range(target_map.shape[1]):
+                if target_map[x][y] == 0:
+                    # Compute distance (Manhattan)
+                    dist = np.sqrt((x - last_end_pos[0])**2 + (y - last_end_pos[1])**2)
+                    if dist < min_dist:
+                        min_dist = dist
+                        new_start = (x, y)
+
+        if new_start is not None:
+            target_map[new_start[0], new_start[1]] = 2
+            print(f"New start for {map_name} set to closest free cell at {new_start}, distance {min_dist}")
+
     cp = CoveragePlanner(target_map)
     cp.set_debug_level(cp_debug_level)
 
@@ -150,6 +174,11 @@ for map_name in maps:
     # Sort by number of steps
     compare_tb.sort(key=lambda x: (x[3], x[4]))
 
+    # Get the best end position
+    last_end_x = compare_tb[0][5][-1][1]
+    last_end_y = compare_tb[0][5][-1][2]
+    last_end_pos = (last_end_x, last_end_y)
+
     # Show results
     print("Map tested: {}".format(map_name))
 
@@ -166,7 +195,7 @@ for map_name in maps:
     # print(summary_tb)
 
         
-    '''
+
     # Print the policy map of the best coverage planner
     cp.print_policy_map(trajectory=compare_tb[0][5], trajectory_annotations=[])
 
@@ -177,12 +206,14 @@ for map_name in maps:
     # Print the best path
     print("\nList of coordinates of the best path: [map:{}, initial orientation: {} ({}), coverage path Heuristic:{}]".format(
         map_name, cp.movement_name[compare_tb[0][1]], compare_tb[0][1], compare_tb[0][0]))
-    print(compare_tb[0][6])
+    print([tuple(compare_tb[0][6][i]) for i in range(len(compare_tb[0][6]))])
+    # compare_tb[0][6]
     print("\n\n")
-    '''
-    
-    planned_path_in_4th_quad += compare_tb[0][6]
 
-planned_path_in_1st_quad = planner.fourth_to_first_quadrant(planned_path_in_4th_quad)
-# print_4th_to_1st_coordinates(l1=planned_path_in_4th_quad , l2=planned_path_in_1st_quad)
+
+    planned_path_in_4th_quad += [[tuple(compare_tb[0][6][i]) for i in range(len(compare_tb[0][6]))]]
+    # planned_path_in_4th_quad += compare_tb[0][6]
+
+
+print(f"planned_path_in_4th_quad: {planned_path_in_4th_quad}")
 
